@@ -1,7 +1,10 @@
-use std::ffi::{CStr, CString};
-use std::ptr;
+use alloc::{
+    ffi::CString,
+    string::{String, ToString},
+};
+use core::{ffi::CStr, ptr};
 
-use security_framework_sys::authorization::*;
+use super::ffi::*;
 
 // vproc_priv.h 中定义的枚举类型
 // vproc_gsk_t 枚举值
@@ -10,8 +13,8 @@ const VPROC_GSK_MGR_NAME: i32 = 6;
 // 这是 launchd 中定义的常量，值为 "Aqua"
 const VPROCMGR_SESSION_AQUA: &[u8] = b"Aqua\0";
 
-// vproc_err_t 类型（通常是整数）
-pub type VprocErr = libc::c_int;
+// vproc_priv.h defines vproc_err_t as an opaque pointer; NULL means success.
+pub type VprocErr = *const libc::c_void;
 // vproc_t 类型（通常是指针）
 pub type Vproc = *const libc::c_void;
 
@@ -43,8 +46,8 @@ pub const RPP_ECHO_OFF: libc::c_int = 0x02;
 pub fn check_aqua_session() -> bool {
     unsafe {
         let mut manager: *mut libc::c_char = ptr::null_mut();
-        // vproc_swap_string 返回 0 表示成功，非 0 表示错误
-        if vproc_swap_string(ptr::null(), VPROC_GSK_MGR_NAME, ptr::null(), &mut manager) != 0
+        // SAFETY: out-pointer storage is valid; launchd returns a malloc-owned string.
+        if !vproc_swap_string(ptr::null(), VPROC_GSK_MGR_NAME, ptr::null(), &mut manager).is_null()
             || manager.is_null()
         {
             return false;
@@ -72,7 +75,7 @@ pub fn authenticate() -> bool {
             return false;
         }
         // 创建授权项：验证当前用户权限
-        let right_name = CString::new("mozhu").unwrap();
+        let right_name = c"mozhu";
         let mut item = AuthorizationItem {
             name: right_name.as_ptr(),
             valueLength: 0,
@@ -118,7 +121,7 @@ pub fn read_password(prompt: &str) -> Option<String> {
                 return None;
             }
         };
-        let mut buffer = vec![0u8; 1024];
+        let mut buffer = [0u8; 1024];
         let result = readpassphrase(
             prompt_cstr.as_ptr(),
             buffer.as_mut_ptr() as *mut libc::c_char,
@@ -161,12 +164,12 @@ pub fn authenticate_with_password(password: &str) -> bool {
         };
         // 创建包含密码的环境变量
         // 注意：密码环境变量的名称必须是 "password"（小写）
-        let password_name = CString::new("password").unwrap();
+        let password_name = c"password";
         // 获取密码字节（不包括 null 终止符）
         let password_bytes = password_cstr.as_bytes();
         let password_len = password_bytes.len();
         // 分配内存来存储密码（Authorization API 会复制这个值）
-        let password_ptr = libc::malloc(password_len) as *mut libc::c_void;
+        let password_ptr = libc::malloc(password_len);
         if password_ptr.is_null() {
             AuthorizationFree(authorization_ref, kAuthorizationFlagDefaults);
             return false;
@@ -187,7 +190,7 @@ pub fn authenticate_with_password(password: &str) -> bool {
             items: &mut env_item as *mut AuthorizationItem,
         };
         // 创建授权项：验证当前用户权限
-        let right_name = CString::new("allow").unwrap();
+        let right_name = c"allow";
         let mut item = AuthorizationItem {
             name: right_name.as_ptr(),
             valueLength: 0,
@@ -222,13 +225,10 @@ pub fn authenticate_with_password(password: &str) -> bool {
 }
 
 pub fn check_permission() -> bool {
-    // 首先尝试图形界面认证（支持 Touch ID 或密码对话框）
-    if check_aqua_session() && authenticate() {
-        return true;
-    }
-    // 如果图形界面认证失败，使用命令行密码输入
-    match read_password("Password: ") {
-        Some(pwd) => authenticate_with_password(&pwd),
-        None => false,
-    }
+    super::check_with(check_aqua_session(), authenticate, || {
+        match read_password("Password: ") {
+            Some(pwd) => authenticate_with_password(&pwd),
+            None => false,
+        }
+    })
 }
