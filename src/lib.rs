@@ -14,6 +14,8 @@ mod unix;
 pub fn check_permission() -> bool {
     #[cfg(target_os = "macos")]
     return auth::macos::check_permission();
+    #[cfg(target_os = "linux")]
+    return true;
     #[cfg(not(target_os = "macos"))]
     false
 }

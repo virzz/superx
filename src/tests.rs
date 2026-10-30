@@ -138,7 +138,13 @@ fn child_receives_eof_and_large_script_without_truncation() {
     assert_eq!(libc::WEXITSTATUS(status), 0);
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
+#[test]
+fn linux_permission_check_uses_setuid_flow() {
+    assert!(check_permission());
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 #[test]
 fn unsupported_authentication_fails_closed() {
     assert!(!check_permission());

@@ -41,10 +41,11 @@ Measured with rustc 1.97.1 on macOS ARM64: the release executable decreased from
 321,600 to 35,808 bytes (88.9%). `opt-level = "s"` was smaller than `"z"` in the
 comparison. Exact sizes vary with toolchain and SDK versions.
 
-Authentication remains macOS-only: Aqua graphical authentication falls back to
-the existing terminal password flow. The `_install` entry point and embedded
-installation script are retained. Non-macOS authentication fails closed; Linux
-retains the existing installer, including its macOS-oriented shell commands.
+On macOS, Aqua graphical authentication falls back to the existing terminal
+password flow. Linux uses the installed setuid-root executable directly and
+does not prompt for a desktop authentication dialog. The `_install` entry point
+and embedded installation script are retained; Linux retains the existing
+installer, including its macOS-oriented shell commands.
 Other platforms compile with an unsupported installer and exit with failure.
 
 Validated targets: macOS ARM64/x86_64 and Linux musl ARM64/x86_64 release linking;
